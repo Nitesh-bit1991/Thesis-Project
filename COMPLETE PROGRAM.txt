@@ -1,0 +1,232 @@
+CSV TO INFLUXDB USING PYTHON IN ANACONDA
+
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jul 17 09:39:46 2020
+
+@author: GINI02
+"""
+-- Import libraries Pandas and InfluxDB
+import pandas as pd
+from influxdb import DataFrameClient
+
+-- Function for convert time in a format suitable for InfluxDB
+def convertTime(s):
+    try:
+        dt = pd.datetime.strptime(s, '%d.%m.%Y %H:%M:%S.%f') # s = time in string format which would be parsed based on the given format
+        return dt
+    except:
+        return None
+-- Load csv file into Pandas object DataFrame
+df = pd.read_csv('node.CSV', delimiter=';',) #using pandas object to read csv file
+#read_csv is one of the modules we can use from pandas
+-- Print csv column names
+print(df.head())
+-- Assign time
+df["time"] = df["time"].map(convertTime)
+-- Set column time as index of DataFrame
+df = df.set_index("time")
+-- Add a new column COIL_ID_TAG with content of column COIL_ID
+df['COIL_ID_TAG'] = df['COIL_ID']
+-- Print csv column names
+print(df.head())
+
+-- Connect to InfluxDB, asign reference to var 'client'
+client = DataFrameClient(host='localhost', port=8086 ) #InfluxDBClient object takes host and port arguments
+-- Use database HOUSE
+client.switch_database('HOUSE') #use this database
+#client.write_points(df, 'iba')
+nRows, nCols = df.shape # shape attribute of pandas.DataFrame stores the number of rows and columns as a tuple (number of rows, number of columns)
+-- Set a var with number of records to write per block
+K = 1000
+-- Initialize the var that will be used as offset to start of each block
+n0 = 0
+-- While start of next block of rows is lower than number of records in DataFrame, write next block to Influx
+while n0 < nRows:
+	-- set the end record of next block
+    n1 = min(n0 + K, nRows)
+    print(n0, n1)
+    -- Write a block of K records to InfluxDB
+    client.write_points(df[n0:n1], 'FINAL', tag_columns=['COIL_ID_TAG'])
+    -- Start of next block is the end of current block
+    n0 = n1
+
+NODE RED INFLUX 1.7
+
+// Addd metadata to the payload
+-- var for store tags
+var tags = {}
+-- Create a tag for coil
+tags.COIL_ID = msg.payload.COIL_ID
+
+-- var for store fields
+var fields = {}
+-- Assign csv record time to this var
+const incomingDate = msg.payload.time;
+
+// extract the date dd.mm.yyyy from the incoming Date String
+const splittedDate = incomingDate.split(' ');
+
+// Convert the date from dd.mm.yyyy to yyyy-mm-dd format
+let date = splittedDate[0].split('.').reverse().join('-');
+
+// Store time value in a separate variable for later use.
+const time = splittedDate[1];
+
+// merge date and time to form yyyy-mm-dd hh:mm:ssZ format
+const dateTime = `${date} ${time}`
+pointTime = new Date(dateTime);
+
+-- Fill up var 'fields' with columns values
+fields: {
+        fields.Ziehkraft_IST_LIN = msg.payload.Ziehkraft_IST_LIN,
+        fields.Ziehkraft_IST_LIN_int = msg.payload.Ziehkraft_IST_LIN_int,
+        fields.ls1 = (msg.payload.ls1 ==1),
+        fields.ls2 = (msg.payload.ls2 ==1),
+        fields.COIL_ID = (msg.payload.COIL_ID ==1)
+      }
+-- Set time in unix timestamp format
+fields.time = pointTime.getTime();
+-- Define a new var of type Array
+var arr =[]
+-- First element of Array is the object 'fields'
+arr[0] = fields
+-- Second element of Array is the object 'tags'
+arr[1] = tags
+
+-- Set the 'payload' attribute of object 'msg' with the content of Array 'arr'
+msg.payload = arr
+-- Return 'msg' as output of current node
+return msg;
+
+
+Node-red to influxdb 2.0
+
+
+-- Store input of current node to new var 'input'
+input = msg.payload;
+-- Assign csv record time to this var
+const incomingDate = msg.payload.time;
+
+// extract the date dd.mm.yyyy from the incoming Date String
+const splittedDate = incomingDate.split(' ');
+
+// Convert the date from dd.mm.yyyy to yyyy-mm-dd format
+let date = splittedDate[0].split('.').reverse().join('-');
+
+// Store time value in a separate variable for later use.
+const time = splittedDate[1];
+
+// merge date and time to form yyyy-mm-dd hh:mm:ssZ format
+const datetime = `${date} ${time}`
+-- Convert string 'datetime' to object of type Date
+pointTime = new Date(datetime);
+-- New var 'output'
+output = {};
+-- Fill up var 'output' with data from the var 'input' in the proper format expected by node InfluxDB2
+output.payload = {
+  bucket: 'project',
+  precision: 'ms',
+
+  data: {
+      measurement: 'machine',
+
+      tags: {
+        coil_id: input.COIL_ID ,
+      },
+
+      fields: {
+
+        ziehkraft_ist: input.ziehkraft_ist,
+        ziehkraft_ist_int: input.ziehkraft_ist_int,
+        Ziehkraft_IST_LIN: input.Ziehkraft_IST_LIN,
+        Drehzahl_Istwert_vom_Regler: input.Drehzahl_Istwert_vom_Regler,
+        Strom_Istwert_vom_Regler: input.Strom_Istwert_vom_Regler,
+        ISTWERT_ZIEHGESCHW_GEGLAETET: input.ISTWERT_ZIEHGESCHW_GEGLAETET,
+        Ziehkraft_IST_V: input.Ziehkraft_IST_V,
+        Ziehkraft_IST_LIN_int: input.Ziehkraft_IST_LIN_int,
+        D_Roh: input.D_Roh,
+        D_Fertig: input.D_Fertig,
+        ISTWERT_ZIEHGESCHW_m_min: input.ISTWERT_ZIEHGESCHW_m_min,
+        lichtschranke_vor_ziehteil_fs_ : (input.lichtschranke_vor_ziehteil_fs_ ==1),
+        lichtschranke_am_hauptgetriebe_rsz_ : (input.lichtschranke_am_hauptgetriebe_rsz_ ==1),
+        lichtschranke_vor_abschneideteil_raa_ : (input.lichtschranke_vor_abschneideteil_raa_ ==1),
+        lichtschranke_hinter_abschneideteil_rsa1_ : (input.lichtschranke_hinter_abschneideteil_rsa1_ ==1),
+        Reset_Zkraft: (input.Reset_Zkraft ==1),
+        ls_vorrichter_zwischen_waage_und_senk: (input.ls_vorrichter_zwischen_waage_und_senk ==1),
+        ls_vor_ziehteil_fs: (input.ls_vor_ziehteil_fs ==1),
+        Ziehstein_Verstellung_Ab: (input.Ziehstein_Verstellung_Ab ==1),
+        Ziehstein_Verstellung_Vor: (input.Ziehstein_Verstellung_Vor ==1),
+        Ziehstein_Verstellung_Zur_k: (input.Ziehstein_Verstellung_Zur_k ==1),
+        COIL_ID: (input.COIL_ID ==1),
+        PUSHING_FORCE: input.PUSHING_FORCE,
+        Drawing_Force: input.Drawing_Force
+
+      },
+
+      timestamp: pointTime.getTime(),
+    },
+};
+
+-- return var 'output' as output message of current node
+return output;
+
+
+-- Comments with instructions
+/*
+Run these sentences on Postgresql:
+
+DROP TABLE drawing;
+CREATE TABLE drawing
+(
+  "time" timestamp without time zone,
+  ziehkraft_ist double precision,
+  ziehkraft_ist_int double precision,
+  ziehkraft_ist_lin double precision,
+  drehzahl_istwert_vom_regler double precision,
+  strom_istwert_vom_regler double precision,
+  istwert_ziehgeschw_geglaetet double precision,
+  ziehkraft_ist_v double precision,
+  ziehkraft_ist_lin_int double precision,
+  d_roh double precision,
+  d_fertig double precision,
+  istwert_ziehgeschw_m_min double precision,
+  lichtschranke_vor_ziehteil_fs_ double precision,
+  lichtschranke_am_hauptgetriebe_rsz_ double precision,
+  lichtschranke_vor_abschneideteil_raa_ double precision,
+  lichtschranke_hinter_abschneideteil_rsa1_ double precision,
+  reset_zkraft double precision,
+  ls_vorrichter_zwischen_waage_und_senk double precision,
+  ls_vor_ziehteil_fs double precision,
+  ziehstein_verstellung_ab double precision,
+  ziehstein_verstellung_vor double precision,
+  ziehstein_verstellung_zur_k double precision,
+  coil_id double precision,
+  pushing_force double precision,
+  drawing_force double precision
+);
+
+*/
+
+-- Define arrary 'fields'
+fields = [];
+-- Define arrary 'values'
+values = [];
+-- Loop over input of current node
+for (var field in msg.payload) {
+	-- Load name of field on array 'fields'
+    // Replace special chars by underscore using regex
+    fields.push(field.toLowerCase().replace(/[ \.\/\(\)\?\-]/g, '_'));
+    -- Load value of field on array 'values'
+    values.push("'" + msg.payload[field] + "'");
+}
+
+-- Fill attribute 'payload' of object 'msg' with the proper format expected by node 'Postgresql'
+-- Build a string with the SQL sentence INSERT using array 'fields' and 'values'
+msg.payload = [{ query:
+    "insert into drawing (" +
+    fields.join(', ') + ") VALUES (" +
+    values.join(', ') + ")"
+}];
+-- Return object 'msg' as output of current node
+return msg;
