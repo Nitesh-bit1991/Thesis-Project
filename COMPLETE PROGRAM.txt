@@ -1,0 +1,203 @@
+CSV TO INFLUXDB USING PYTHON IN ANACONDA
+
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jul 17 09:39:46 2020
+
+@author: GINI02
+"""
+
+import pandas as pd
+from influxdb import DataFrameClient
+
+
+def convertTime(s):
+    try:
+        dt = pd.datetime.strptime(s, '%d.%m.%Y %H:%M:%S.%f')
+        return dt
+    except:
+        return None
+
+df = pd.read_csv('node.CSV', delimiter=';',)
+print(df.head())
+df["time"] = df["time"].map(convertTime)
+df = df.set_index("time")
+df['COIL_ID_TAG'] = df['COIL_ID']
+print(df.head())
+
+client = DataFrameClient(host='localhost', port=8086 )
+client.switch_database('HOUSE')
+#client.write_points(df, 'iba')
+nRows, nCols = df.shape
+K = 1000
+n0 = 0
+while n0 < nRows:
+    n1 = min(n0 + K, nRows)
+    print(n0, n1)
+    client.write_points(df[n0:n1], 'FINAL', tag_columns=['COIL_ID_TAG'])
+    n0 = n1
+
+NODE RED INFLUX 1.7
+
+// Addd metadata to the payload
+
+var tags = {}
+tags.COIL_ID = msg.payload.COIL_ID
+
+
+var fields = {}
+
+const incomingDate = msg.payload.time;
+
+// extract the date dd.mm.yyyy from the incoming Date String
+const splittedDate = incomingDate.split(' ');
+
+// Convert the date from dd.mm.yyyy to yyyy-mm-dd format
+let date = splittedDate[0].split('.').reverse().join('-');
+
+// Store time value in a separate variable for later use.
+const time = splittedDate[1];
+
+// merge date and time to form yyyy-mm-dd hh:mm:ssZ format
+const dateTime = `${date} ${time}`
+pointTime = new Date(dateTime);
+
+// assign the timestamp value to fields.time
+fields: {
+        
+        
+        fields.Ziehkraft_IST_LIN = msg.payload.Ziehkraft_IST_LIN,
+        fields.Ziehkraft_IST_LIN_int = msg.payload.Ziehkraft_IST_LIN_int,
+        fields.ls1 = (msg.payload.ls1 ==1),
+        fields.ls2 = (msg.payload.ls2 ==1),
+        fields.COIL_ID = (msg.payload.COIL_ID ==1)
+      }
+     
+      fields.time = pointTime.getTime();
+var arr =[]
+arr[0] = fields
+arr[1] = tags
+
+
+msg.payload = arr
+
+return msg;
+
+
+Node-red to influxdb 2.0
+
+
+
+input = msg.payload;
+
+const incomingDate = msg.payload.time;
+
+// extract the date dd.mm.yyyy from the incoming Date String
+const splittedDate = incomingDate.split(' ');
+
+// Convert the date from dd.mm.yyyy to yyyy-mm-dd format
+let date = splittedDate[0].split('.').reverse().join('-');
+
+// Store time value in a separate variable for later use.
+const time = splittedDate[1];
+
+// merge date and time to form yyyy-mm-dd hh:mm:ssZ format
+const datetime = `${date} ${time}`
+pointTime = new Date(datetime);
+output = {};
+output.payload = {
+  bucket: 'project',
+  precision: 'ms',
+
+  data: {
+      measurement: 'machine',
+
+      tags: {
+        coil_id: input.COIL_ID ,
+      },
+
+      fields: {
+        
+        ziehkraft_ist: input.ziehkraft_ist,
+        ziehkraft_ist_int: input.ziehkraft_ist_int,
+        Ziehkraft_IST_LIN: input.Ziehkraft_IST_LIN,
+        Drehzahl_Istwert_vom_Regler: input.Drehzahl_Istwert_vom_Regler,
+        Strom_Istwert_vom_Regler: input.Strom_Istwert_vom_Regler,
+        ISTWERT_ZIEHGESCHW_GEGLAETET: input.ISTWERT_ZIEHGESCHW_GEGLAETET,
+        Ziehkraft_IST_V: input.Ziehkraft_IST_V,
+        Ziehkraft_IST_LIN_int: input.Ziehkraft_IST_LIN_int,
+        D_Roh: input.D_Roh,
+        D_Fertig: input.D_Fertig,
+        ISTWERT_ZIEHGESCHW_m_min: input.ISTWERT_ZIEHGESCHW_m_min,
+        lichtschranke_vor_ziehteil_fs_ : (input.lichtschranke_vor_ziehteil_fs_ ==1),
+        lichtschranke_am_hauptgetriebe_rsz_ : (input.lichtschranke_am_hauptgetriebe_rsz_ ==1),
+        lichtschranke_vor_abschneideteil_raa_ : (input.lichtschranke_vor_abschneideteil_raa_ ==1),
+        lichtschranke_hinter_abschneideteil_rsa1_ : (input.lichtschranke_hinter_abschneideteil_rsa1_ ==1),
+        Reset_Zkraft: (input.Reset_Zkraft ==1),
+        ls_vorrichter_zwischen_waage_und_senk: (input.ls_vorrichter_zwischen_waage_und_senk ==1),
+        ls_vor_ziehteil_fs: (input.ls_vor_ziehteil_fs ==1),
+        Ziehstein_Verstellung_Ab: (input.Ziehstein_Verstellung_Ab ==1),
+        Ziehstein_Verstellung_Vor: (input.Ziehstein_Verstellung_Vor ==1),
+        Ziehstein_Verstellung_Zur_k: (input.Ziehstein_Verstellung_Zur_k ==1),
+        COIL_ID: (input.COIL_ID ==1),
+        PUSHING_FORCE: input.PUSHING_FORCE,
+        Drawing_Force: input.Drawing_Force 
+        
+      },
+     
+      timestamp: pointTime.getTime(),
+    },
+};
+
+return output;
+
+
+/*
+Run these sentences on Postgresql:
+
+DROP TABLE drawing;
+CREATE TABLE drawing
+(
+  "time" timestamp without time zone,
+  ziehkraft_ist double precision,
+  ziehkraft_ist_int double precision,
+  ziehkraft_ist_lin double precision,
+  drehzahl_istwert_vom_regler double precision,
+  strom_istwert_vom_regler double precision,
+  istwert_ziehgeschw_geglaetet double precision,
+  ziehkraft_ist_v double precision,
+  ziehkraft_ist_lin_int double precision,
+  d_roh double precision,
+  d_fertig double precision,
+  istwert_ziehgeschw_m_min double precision,
+  lichtschranke_vor_ziehteil_fs_ double precision,
+  lichtschranke_am_hauptgetriebe_rsz_ double precision,
+  lichtschranke_vor_abschneideteil_raa_ double precision,
+  lichtschranke_hinter_abschneideteil_rsa1_ double precision,
+  reset_zkraft double precision,
+  ls_vorrichter_zwischen_waage_und_senk double precision,
+  ls_vor_ziehteil_fs double precision,
+  ziehstein_verstellung_ab double precision,
+  ziehstein_verstellung_vor double precision,
+  ziehstein_verstellung_zur_k double precision,
+  coil_id double precision,
+  pushing_force double precision,
+  drawing_force double precision
+);
+
+*/
+
+fields = [];
+values = [];
+for (var field in msg.payload) {
+    // Replace special chars by underscore using regex
+    fields.push(field.toLowerCase().replace(/[ \.\/\(\)\?\-]/g, '_'));
+    values.push("'" + msg.payload[field] + "'");
+}
+
+msg.payload = [{ query:
+    "insert into drawing (" +
+    fields.join(', ') + ") VALUES (" +
+    values.join(', ') + ")"
+}];   
+return msg;
