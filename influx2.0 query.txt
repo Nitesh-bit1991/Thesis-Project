@@ -179,12 +179,143 @@ join(
 |>group()
 
 
+10. Stddev of drawing force
+
+from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> stddev() 
+ |> map(fn: (r) => ({ r with _result: r._value / 10.0 }))
+
+11. std deviation of Pushing_Force above max drawing force
+
+data1 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |>group()
+
+ data2 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "PUSHING_FORCE"
+ )
+ |> group(columns: ["coil_id"])
+ |>group()
+
+ 
+join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["coil_id"], method: "inner"
+)
+|> filter(fn: (r) => r._value_data2 > r._value_data1)
+|> group(columns: ["coil_id"])
+|>stddev(column:"_value_data2")
+|> map(fn: (r) => ({ r with _result: r._value_data2 / 10.0 }))
+
+12. relation between avg Pushing_Force above max Drawing Force and avg Drawing Force
+
+data1 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |>group()
+
+ data2 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "PUSHING_FORCE"
+ )
+ |> group(columns: ["coil_id"])
+ |>group()
+
+data3 = join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["coil_id"], method: "inner"
+)
+|> filter(fn: (r) => r._value_data2 > r._value_data1)
+|> group(columns: ["coil_id"])
+|>mean(column:"_value_data2")
+//|> map(fn: (r) => ({ r with _result: r._value_data2 / 10.0 }))
+
+data4 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> mean() 
+ |>group()
+
+ join(
+ tables: {data3:data3,data4:data4}, 
+ on: ["coil_id"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _va: r._value_data2/r._value }))
+|> map(fn: (r) => ({ r with force_relation: r._va * 100.0 }))
+
+13. relation between stdev Pushing_Force > max Drawing F and stdev Drawing Force
 
 
+data1 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |>group()
 
+ data2 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "PUSHING_FORCE"
+ )
+ |> group(columns: ["coil_id"])
+ |>group()
 
+data3 = join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["coil_id"], method: "inner"
+)
+|> filter(fn: (r) => r._value_data2 > r._value_data1)
+|> group(columns: ["coil_id"])
+|> stddev(column:"_value_data2")
+//|> map(fn: (r) => ({ r with _result: r._value_data2 / 10.0 }))
 
+data4 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> stddev() 
+ |>group()
 
+ join(
+ tables: {data3:data3,data4:data4}, 
+ on: ["coil_id"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _va: r._value_data2/r._value }))
+|> map(fn: (r) => ({ r with force_relation: r._va * 100.0 }))
 
 
 
