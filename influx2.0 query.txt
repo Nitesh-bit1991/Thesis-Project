@@ -317,6 +317,52 @@ data4 = from(bucket: "test")
 |> map(fn: (r) => ({ r with _va: r._value_data2/r._value }))
 |> map(fn: (r) => ({ r with force_relation: r._va * 100.0 }))
 
+14. Production actual
+
+from(bucket: "test")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "test1")
+  |> filter(fn: (r) => r["_field"] == "lichtschranke_am_hauptgetriebe_rsz_" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min" )
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.ISTWERT_ZIEHGESCHW_m_min > 5.0) 
+  |> filter( fn: (r) => r.lichtschranke_am_hauptgetriebe_rsz_ == true )
+  |> map(fn: (r) =>	({r with _value: r.lichtschranke_am_hauptgetriebe_rsz_ }))
+  |> count()
+  |> toFloat()
+  |> map(fn: (r) =>	({r with _val: r._value * 0.1 / 60.0}))
+
+15. Productivity actual
+
+data1 = from(bucket: "test")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "test1")
+  |> filter(fn: (r) => r["_field"] == "lichtschranke_am_hauptgetriebe_rsz_" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min" )
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.ISTWERT_ZIEHGESCHW_m_min > 5.0) 
+  |> filter( fn: (r) => r.lichtschranke_am_hauptgetriebe_rsz_ == true )
+  |> map(fn: (r) =>	({r with _value: r.lichtschranke_am_hauptgetriebe_rsz_ }))
+  |> count()
+  |> toFloat()
+  |> map(fn: (r) =>	({r with _val: r._value * 0.1 / 60.0}))
+ 
+data2 = from(bucket: "test")
+	|> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+	|> filter(fn: (r) =>
+		(r["_measurement"] == "test1"))
+	|> filter(fn: (r) =>
+		(r["_field"] == "lichtschranke_am_hauptgetriebe_rsz_" ))
+	|> count(column: "_value")
+    |> toFloat()
+	|> group(columns: ["coil_id"])
+    |> map(fn: (r) =>	({r with _val: r._value * 0.10 / 60.0}))
+
+join(
+ tables: {data1:data1,data2:data2}, 
+  on: ["coil_id"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _m: r._val_data1 / r._val_data2 * 100.0 }))
+|>group()
+
 
 
 
