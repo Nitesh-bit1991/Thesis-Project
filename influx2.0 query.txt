@@ -364,9 +364,196 @@ join(
 |>group()
 
 
+16.All data from a file_plettenberg
 
+from(bucket: "test")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "test1")
+  |> filter(fn: (r) => r["_field"] == "COIL_ID" or r["_field"] == "D_Fertig" or r["_field"] == "D_Roh" or r["_field"] == "Drawing_Force" or r["_field"] == "Drehzahl_Istwert_vom_Regler" or r["_field"] == "ISTWERT_ZIEHGESCHW_GEGLAETET" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min" or r["_field"] == "PUSHING_FORCE" or r["_field"] == "Reset_Zkraft" or r["_field"] == "Strom_Istwert_vom_Regler" or r["_field"] == "Ziehkraft_IST_LIN" or r["_field"] == "Ziehkraft_IST_LIN_int" or r["_field"] == "Ziehkraft_IST_V" or r["_field"] == "Ziehstein_Verstellung_Ab" or r["_field"] == "Ziehstein_Verstellung_Vor" or r["_field"] == "Ziehstein_Verstellung_Zur_k" or r["_field"] == "lichtschranke_am_hauptgetriebe_rsz_" or r["_field"] == "lichtschranke_hinter_abschneideteil_rsa1_" or r["_field"] == "lichtschranke_vor_abschneideteil_raa_" or r["_field"] == "lichtschranke_vor_ziehteil_fs_" or r["_field"] == "ls_vor_ziehteil_fs" or r["_field"] == "ls_vorrichter_zwischen_waage_und_senk" or r["_field"] == "ziehkraft_ist" or r["_field"] == "ziehkraft_ist_int")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> group()
 
+17. Average Pushing_Force above max drawing force
 
+data1 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |>group()
+
+ data2 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "PUSHING_FORCE"
+ )
+ |> group(columns: ["coil_id"])
+ |>group()
+
+ join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["coil_id"], method: "inner"
+)
+|> filter(fn: (r) => r._value_data2 > r._value_data1)
+|> group(columns: ["coil_id"])
+|>mean(column:"_value_data2")
+|> map(fn: (r) => ({ r with _result: r._value_data2 / 10.0 }))
+
+18. std deviation of Pushing_Force above max drawing force
+
+data1 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |>group()
+
+ data2 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "PUSHING_FORCE"
+ )
+ |> group(columns: ["coil_id"])
+ |>group()
+
+ 
+join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["coil_id"], method: "inner"
+)
+|> filter(fn: (r) => r._value_data2 > r._value_data1)
+|> group(columns: ["coil_id"])
+|>stddev(column:"_value_data2")
+|> map(fn: (r) => ({ r with _result: r._value_data2 / 10.0 }))
+
+19. relation between Max_forces
+
+data = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "PUSHING_FORCE"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |> group()
+data1 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |>group()
+join(
+ tables: {data:data,data1:data1}, 
+  on: ["coil_id"], method: "inner"
+ )
+ |> map(fn: (r) => ({ r with _value: r._value_data/r._value_data1 }))
+ |> map(fn: (r) => ({ r with force_relation: r._value * 100.0 }))
+
+20. relation between avg Pushing_F > max Drawing F and avg Drawing F
+
+data1 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |>group()
+
+ data2 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "PUSHING_FORCE"
+ )
+ |> group(columns: ["coil_id"])
+ |>group()
+
+data3 = join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["coil_id"], method: "inner"
+)
+|> filter(fn: (r) => r._value_data2 > r._value_data1)
+|> group(columns: ["coil_id"])
+|>mean(column:"_value_data2")
+//|> map(fn: (r) => ({ r with _result: r._value_data2 / 10.0 }))
+
+data4 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> mean() 
+ |>group()
+
+ join(
+ tables: {data3:data3,data4:data4}, 
+ on: ["coil_id"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _va: r._value_data2/r._value }))
+|> map(fn: (r) => ({ r with force_relation: r._va * 100.0 }))
+
+21. realtion between stdev Pushing_F > max Drawing F and stdev Drawing F
+
+data1 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> max() 
+ |>group()
+
+ data2 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "PUSHING_FORCE"
+ )
+ |> group(columns: ["coil_id"])
+ |>group()
+
+data3 = join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["coil_id"], method: "inner"
+)
+|> filter(fn: (r) => r._value_data2 > r._value_data1)
+|> group(columns: ["coil_id"])
+|> stddev(column:"_value_data2")
+//|> map(fn: (r) => ({ r with _result: r._value_data2 / 10.0 }))
+
+data4 = from(bucket: "test")
+ |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+ |> filter(fn: (r) =>
+ r._measurement == "test1" and
+ r._field == "Drawing_Force"
+ )
+ |> group(columns: ["coil_id"])
+ |> stddev() 
+ |>group()
+
+ join(
+ tables: {data3:data3,data4:data4}, 
+ on: ["coil_id"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _va: r._value_data2/r._value }))
+|> map(fn: (r) => ({ r with force_relation: r._va * 100.0 }))
 
 
 
