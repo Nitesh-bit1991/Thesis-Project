@@ -172,6 +172,8 @@ output.payload = {
 return output;
 
 
+Node-red to PostgreSQL
+
 -- Comments with instructions
 /*
 Run these sentences on Postgresql:
