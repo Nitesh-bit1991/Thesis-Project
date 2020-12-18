@@ -1,0 +1,350 @@
+#Grafana - Influx2.0 
+
+1. Diameter_in
+
+from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "D_Roh")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) => ({ r with _value: r.D_Roh * 0.1 }))
+  |> map(fn: (r) => ({ r with Diameter_in: r._value }))
+  |> aggregateWindow(every: v.windowPeriod, fn: mean, column: "Diameter_in")
+  |>yield(name:"mean")
+  
+
+2. Diameter_out
+
+from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba15")
+  |> filter(fn: (r) => r["_field"] == "D_Fertig")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) => ({ r with _value: r.D_Fertig * 0.1 }))
+  |> map(fn: (r) => ({ r with Diameter_out: r._value }))
+  |> aggregateWindow(every: v.windowPeriod, fn: mean, column: "Diameter_out")
+  |>yield(name:"mean")
+
+3. SMS group
+
+<img src="https://upload.wikimedia.org/wikipedia/commons/9/9b/SMSGroup.svg" style="height:80%;align=right;background-color:WHITE;"/>
+
+4. Force
+
+from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Ziehkraft_IST_LIN_int")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value: r.Ziehkraft_IST_LIN_int }))
+  |> map(fn: (r) =>	({r with force: r._value }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> aggregateWindow(every: v.windowPeriod, fn: mean, column:"force")
+  |>yield(name:"mean")
+
+5. Speed
+
+from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value: r.ISTWERT_ZIEHGESCHW_m_min }))
+  |> map(fn: (r) =>	({r with Speed: r._value }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> aggregateWindow(every: v.windowPeriod, fn: mean, column:"Speed")
+  |>yield(name:"mean")
+
+6. Average Drawing Force
+
+from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Drawing_force" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.ISTWERT_ZIEHGESCHW_m_min > 5.0)
+  |> map(fn: (r) =>	({r with _value: r.Drawing_force }))
+  |> group(columns: ["COIL_id1"])
+  |> mean(column: "Drawing_force")
+
+7. Max Drawing Force
+
+from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Drawing_force" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.ISTWERT_ZIEHGESCHW_m_min > 5.0)
+  |> filter(fn: (r) => r.Drawing_force > 0)
+  |> group(columns: ["COIL_id1"])
+  |> max(column: "Drawing_force")
+
+8. Average Pushing Force
+
+data1 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Drawing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value1: r.Drawing_force }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> max(column: "Drawing_force")
+  |> group()
+
+  data2 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Pushing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value2: r.Pushing_force }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> group()
+
+  join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["COIL_id1"], method: "inner"
+)
+
+|> filter(fn: (r) => r._value2 > r._value1)
+|> group(columns: ["COIL_id1"])
+|>mean(column:"_value2")
+|> map(fn: (r) => ({ r with _Avg_pushing_force: r._value2}))
+
+
+
+9. Max Pushing Force
+
+data1 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Drawing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value1: r.Drawing_force }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> max(column: "Drawing_force")
+  |> group()
+
+  data2 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Pushing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value2: r.Pushing_force }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> group()
+
+  join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["COIL_id1"], method: "inner"
+)
+
+|> filter(fn: (r) => r._value2 > r._value1)
+|> group(columns: ["COIL_id1"])
+|>max(column:"_value2")
+|> map(fn: (r) => ({ r with Max_pushing_force: r._value2}))
+
+10. Average Force Relation
+
+data1 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Drawing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value1: r.Drawing_force }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> max(column: "Drawing_force")
+  |> group()
+
+  data2 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Pushing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value2: r.Pushing_force }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> group()
+
+ data3 =  join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["COIL_id1"], method: "inner"
+)
+|> filter(fn: (r) => r._value2 > r._value1)
+|> group(columns: ["COIL_id1"])
+|>mean(column:"_value2")
+|> map(fn: (r) => ({ r with _Avg_pushing_force: r._value2}))
+
+data4 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Drawing_force" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.ISTWERT_ZIEHGESCHW_m_min > 5.0)
+  |> map(fn: (r) =>	({r with _value: r.Drawing_force }))
+  |> group(columns: ["COIL_id1"])
+  |> mean(column: "Drawing_force")
+join(
+ tables: {data3:data3,data4:data4}, 
+ on: ["COIL_id1"], method: "inner"
+)
+
+
+  |> map(fn: (r) => ({ r with _va: r._Avg_pushing_force/r.Drawing_force }))
+ |> map(fn: (r) => ({ r with force_relation: r._va * 100.0 }))
+
+11. Max Force Relation
+
+data1 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Drawing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value1: r.Drawing_force }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> max(column: "Drawing_force")
+  |> group()
+
+  data2 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Pushing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value2: r.Pushing_force }))
+  |> group(columns: ["COIL_id1"], mode:"by")
+  |> group()
+
+data3 = join(
+ tables: {data1:data1,data2:data2}, 
+ on: ["COIL_id1"], method: "inner"
+)
+
+|> filter(fn: (r) => r._value2 > r._value1)
+|> group(columns: ["COIL_id1"])
+|>max(column:"_value2")
+
+data4 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "Drawing_force")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.Drawing_force > 0)
+  |> group(columns: ["COIL_id1"])
+  |> max(column: "Drawing_force")
+  |>group()
+
+  join(
+ tables: {data3:data3,data4:data4}, 
+ on: ["COIL_id1"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _va: r._value2/r._value1 }))
+|> map(fn: (r) => ({ r with force_relation: r._va * 100.0 }))
+
+12. Production time
+
+from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min" or r["_field"] == 
+  "Lichtschranke_am_Hauptgetriebe_RSZ_")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.ISTWERT_ZIEHGESCHW_m_min > 1.0)
+  |> filter( fn: (r) => r.Lichtschranke_am_Hauptgetriebe_RSZ_ == 1 )
+  |> group(columns: ["COIL_id1"])
+  |> count(column: "Lichtschranke_am_Hauptgetriebe_RSZ_")
+  |> map(fn:(r) => ({ r with _result1: float(v: r.Lichtschranke_am_Hauptgetriebe_RSZ_) }))
+  |> map(fn: (r) =>	({r with _production_time: r._result1 * 1.0 / 60.0}))
+
+13. Total time
+
+from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "Lichtschranke_am_Hauptgetriebe_RSZ_" or r["_field"] == "COIL_id1")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value: r.Lichtschranke_am_Hauptgetriebe_RSZ_ }))
+  //|> count(column: "_value")
+  |> group(columns: ["COIL_id1"])
+  |> count(column: "_value")
+  |> map(fn:(r) => ({ r with _result3: float(v: r._value) }))
+  |> map(fn: (r) =>	({r with _total_time: r._result3 * 1.0 / 60.0}))
+
+
+14. Non production time
+
+data1 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "Lichtschranke_am_Hauptgetriebe_RSZ_" or r["_field"] == "COIL_id1")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value: r.Lichtschranke_am_Hauptgetriebe_RSZ_ }))
+  //|> count(column: "_value")
+  |> group(columns: ["COIL_id1"])
+  |> count(column: "_value")
+  |> map(fn:(r) => ({ r with _result3: float(v: r._value) }))
+  |> map(fn: (r) =>	({r with _total_time: r._result3 * 1.0 / 60.0}))
+
+  data2 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min" or r["_field"] == 
+  "Lichtschranke_am_Hauptgetriebe_RSZ_")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.ISTWERT_ZIEHGESCHW_m_min > 1.0)
+  |> filter( fn: (r) => r.Lichtschranke_am_Hauptgetriebe_RSZ_ == 1 )
+  |> group(columns: ["COIL_id1"])
+  |> count(column: "Lichtschranke_am_Hauptgetriebe_RSZ_")
+  |> map(fn:(r) => ({ r with _result1: float(v: r.Lichtschranke_am_Hauptgetriebe_RSZ_) }))
+  |> map(fn: (r) =>	({r with _production_time: r._result1 * 1.0 / 60.0}))
+
+  join(
+ tables: {data1:data1,data2:data2}, 
+  on: ["COIL_id1"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _Non_Production_time: r._total_time - r._production_time }))
+  
+
+
+15. Productivity
+
+data1 = from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "COIL_id1" or r["_field"] == "ISTWERT_ZIEHGESCHW_m_min" or r["_field"] == 
+  "Lichtschranke_am_Hauptgetriebe_RSZ_")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r.ISTWERT_ZIEHGESCHW_m_min > 5.0)
+  |> filter( fn: (r) => r.Lichtschranke_am_Hauptgetriebe_RSZ_ == 1 )
+  |> group(columns: ["COIL_id1"])
+  |> count(column: "Lichtschranke_am_Hauptgetriebe_RSZ_")
+  |> map(fn:(r) => ({ r with _result1: float(v: r.Lichtschranke_am_Hauptgetriebe_RSZ_) }))
+  |> map(fn: (r) =>	({r with _production_time: r._result1 * 1.0 / 60.0}))
+
+
+ data2 =  from(bucket: "bright-bar-steel")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r["_measurement"] == "iba20")
+  |> filter(fn: (r) => r["_field"] == "Lichtschranke_am_Hauptgetriebe_RSZ_" or r["_field"] == "COIL_id1")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> map(fn: (r) =>	({r with _value: r.Lichtschranke_am_Hauptgetriebe_RSZ_ }))
+  //|> count(column: "_value")
+  |> group(columns: ["COIL_id1"])
+  |> count(column: "_value")
+  |> map(fn:(r) => ({ r with _result3: float(v: r._value) }))
+  |> map(fn: (r) =>	({r with _total_time: r._result3 * 1.0 / 60.0}))
+
+
+  join(
+ tables: {data1:data1,data2:data2}, 
+  on: ["COIL_id1"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _productivity: r._production_time / r._total_time * 100.0 }))
+  join(
+ tables: {data1:data1,data2:data2}, 
+  on: ["COIL_ID"], method: "inner"
+)
+|> map(fn: (r) => ({ r with _productivity: r._result1 / r._result2 * 100.0 }))
+  
+  
+
+
+
+
